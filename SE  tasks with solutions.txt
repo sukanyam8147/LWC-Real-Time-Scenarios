@@ -1,0 +1,634 @@
+5.Whenever file upload in contact using lwc then backgroud upload same file related account.
+
+Apex Class:
+------------------
+
+public with sharing class uploadfileController {
+    @AuraEnabled
+    public static List<ContentDocumentLink>  uploadfiles(string recordId,List<String> ContentVersionIds) {
+       Contact con=[Select Id,Name,AccountId from Contact where Id=:recordId];
+       List<ContentDocumentLink> conDocsLinks=new List<ContentDocumentLink>();
+       List<ContentVersion> conDocs = [SELECT ContentDocumentId FROM ContentVersion WHERE Id IN:ContentVersionIds];
+       if(String.isNotBlank(con.AccountId))
+       {
+       for(ContentVersion conDoc:conDocs)
+       {
+        ContentDocumentLink cDe = new ContentDocumentLink();
+        cDe.ContentDocumentId = conDoc.ContentDocumentId;
+        cDe.LinkedEntityId = con.AccountId; 
+        cDe.ShareType = 'I'; 
+        cDe.Visibility = 'AllUsers';
+        conDocsLinks.add(cDe);
+       }
+    }
+    if(conDocsLinks.size()>0)
+    {
+        insert conDocsLinks;
+    }
+        
+    return conDocsLinks;
+}
+@AuraEnabled
+public static List<ContentDocument>  getuploadfiles(List<String> ContentVersionIds) {
+    Set<Id> docIds=new Set<Id>();
+    if(ContentVersionIds.size()>0)
+    {
+        List<ContentVersion> conDocs = [SELECT Id, ContentDocumentId FROM ContentVersion WHERE Id IN:ContentVersionIds];
+        for(ContentVersion ver:conDocs)
+        {
+        docIds.add(ver.ContentDocumentId);
+        }
+
+    }
+    List<ContentDocument> Docs=[SELECT Id,FileType, Title FROM ContentDocument where Id IN:docIds];
+    return Docs;
+    
+}
+}
+
+------------fileuploadList.html--------------------------------------------------
+<template>
+    <lightning-card title="File List" icon-name="custom:custom34">
+            <lightning-datatable
+                    key-field="Id"
+                    data={files}
+                    columns={columns}
+                    hide-checkbox-column>
+            </lightning-datatable>
+            </lightning-card>
+      
+</template>
+----------------------JS--------------------------------------
+import { LightningElement,api,wire } from 'lwc';
+import getFiles from '@salesforce/apex/uploadfileController.getuploadfiles';
+export default class UploadfilesList extends LightningElement {
+    files
+   @api getFileList(versids)
+    {
+      getFiles({ContentVersionIds:versids}).then(result=>{
+          
+           console.log('file list',result)
+           this.files=result
+        }).catch(error=>{
+            console.log(error)
+        })
+    }
+ columns=[
+        {label:'Id',fieldName:'Id'},
+        {label:'Title',fieldName:'Title'},
+        {label:'File Type',fieldName:'FileType'},
+    ]
+   
+}
+----------------fileupload.html-----------------------------------
+<template>
+    <lightning-file-upload
+        label="Attach receipt"
+        name="fileUploader"
+        accept={acceptedFormats}
+        record-id={recordId}
+        onuploadfinished={handleUploadFinished}
+        multiple
+    >
+    </lightning-file-upload> 
+<c-uploadfiles-list></c-uploadfiles-list>
+</template>
+---------------------------JS----------------------
+import { LightningElement,api } from 'lwc';
+import fileUpload from '@salesforce/apex/uploadfileController.uploadfiles'
+import getFiles from '@salesforce/apex/uploadfileController.getuploadfiles';
+export default class FileUpload extends LightningElement {
+    @api recordId;
+    showChild=false
+    ContentVersionIds
+    uploadedFiles=[]
+    get acceptedFormats() {
+        return ['.pdf', '.png'];
+    }
+
+    handleUploadFinished(event) {
+        console.log(event.detail.files)
+        console.log(event.detail.files[0].contentVersionId)
+        this.ContentVersionIds=this.getContentVersionIds(event.detail.files)
+        fileUpload({recordId:this.recordId,ContentVersionIds:this.ContentVersionIds}).then(data=>{
+            console.log(data)
+        }).catch(error=>{
+            console.log(error)
+        })
+        console.log(this.ContentVersionIds)
+this.childMethod(this.ContentVersionIds)
+    }
+  getContentVersionIds(data)
+  {
+    return data.map(item=>{
+        return item.contentVersionId
+    })
+  }
+  childMethod(Ids)
+  {
+    this.template.querySelector('c-uploadfiles-list').getFileList(Ids);
+  }
+}
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+1.Write Rest API for Insert college records with related branches using below json string?
+
+
+------------------------------------------JS STRING------------------------------------------------------------------
+{
+   "CollegeDetails":[
+      {
+         "Name":"JNTUH",
+         "Street":"KPHB",
+         "City":"KKPL",
+         "Pincode":"123321",
+         "State":"TN",
+         "Country":"India",
+         "Branches":[
+            {
+               "Name":"CSE",
+               "BranchCode":"CSE-2022",
+               "FacultyName":"Prakash",
+               "StudnetsStrength":60
+            },
+            {
+               "Name":"Mech",
+               "BranchCode":"Mech-2022",
+               "FacultyName":"Sandeep",
+               "StudnetsStrength":60
+            }
+         ]
+      },
+      {
+         "Name":"Andhra University",
+            "Street":"AU Road",
+            "City":"Vizag",
+            "Pincode":"345543",
+            "State":"AP",
+            "Country":"India",
+         "Branches":[
+            {
+               "Name":"ECE",
+               "BranchCode":"ECE-2022",
+               "FacultyName":"Vijay",
+               "StudnetsStrength":40
+            },
+            {
+               "Name":"CIVIL",
+               "BranchCode":"CV-2022",
+               "FacultyName":"Mohan",
+               "StudnetsStrength":40
+            }
+         ]
+      }
+   ]
+}
+
+
+Solution:
+----------------
+
+----------------------------------------------------------REST API------------------------------------------------------------------
+
+@RestResource(urlMapping='/CreateCollegeWithMultipleBranches/*')
+global class collegeBranchWebservice{
+    global class branchesWrap
+    {
+        string Name;
+        string BranchCode;
+        string FacultyName;
+        string StudnetsStrength;
+    }
+    global class collegeDetailsWrap
+    {
+        string Name;
+        string Street;
+        string City;
+        string Pincode;
+        string State;
+        string Country;
+        List<branchesWrap> Branches;
+    }  
+    global class jsonWrap
+    {
+        public List<collegeDetailsWrap> CollegeDetails;
+    }
+    @HttpPost
+    global static void CreateCollegeWithBranches()
+    {
+        List<College__c> colleges=new List<College__c>();    
+        List<Branch__c> branchList=new List<Branch__c>();
+        RestRequest req = RestContext.request;
+        jsonWrap jsWrap = (jsonWrap)JSON.deserialize(req.requestbody.tostring(),jsonWrap.class);
+        List<collegeDetailsWrap> cwrap=jsWrap.CollegeDetails;
+        Map<integer,List<Branch__c>> mapBranchvalue=new Map<integer,List<Branch__c>>();
+        integer index=0;
+        //refer external id 2 DML 
+        for(collegeDetailsWrap cd:cwrap)
+        {
+            College__c c=new College__c();
+            c.Name=cd.Name;
+            c.Street__c=cd.Street;
+            c.City__c=cd.City;
+            c.Pincode__c=integer.valueOf(cd.Pincode);
+            c.State__c=cd.State;
+            c.Country__c=cd.Country;
+            colleges.add(c);
+            List<Branch__c> bList=new List<Branch__c>();
+            for(branchesWrap bsw:cd.Branches)
+            {
+                Branch__c bc=new Branch__c();
+                bc.Name=bsw.Name;
+                bc.BranchCode__c=bsw.BranchCode;
+                bc.Students_Strength__c=Decimal.valueOf(bsw.StudnetsStrength);
+                bList.add(bc);
+            }
+            mapBranchvalue.put(index,bList);
+            index++;
+        }
+        insert colleges;
+        System.debug('print colleges'+colleges);
+        for(integer i=0;i<colleges.size();i++)
+        {
+            for(Branch__c b:mapBranchvalue.get(i))
+            {
+                b.College__c=colleges[i].Id;
+                branchList.add(b);
+            }
+        }
+        insert branchList;
+        system.debug('print branches'+branchList);
+    }
+}
+
+-----------------------------Test Class-----------------------------------------------
+@istest
+public class TestClassCreateCollegesWithBranches {
+    @isTest static void TestMethodforCreateCollegesWithBranches()
+    {
+     
+        RestRequest req=new RestRequest();
+         RestResponse res=new RestResponse();
+        req.httpMethod='POST';
+        req.requestURI='/services/apexrest/CreateCollegesWithBranches/';
+        string json='{"CollegeDetails":[{"Name":"JNTUH","Street":"KPHB","City":"KKPL","Pincode":"123321","State":"TN","Country":"India","Branches":[ {"Name":"CSE", "BranchCode":"CSE-2022","StudnetsStrength":60 },{"Name":"CSE", "BranchCode":"CSE-2022","StudnetsStrength":60 }]}]}';
+        req.requestBody=blob.valueOf(json);
+        RestContext.request=req;
+        RestContext.response=res;
+        Test.startTest();
+        REST_API_CreateCollegesWithBranches.CreateCollegeWithBranches();
+        Test.stopTest();
+        List<College__c> colleges=[Select Id,Name,(Select Id,Name from Branches__r) from College__c];
+        System.assertEquals(1,colleges.size());
+    }
+}
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+2.count the unrelated products in opportunity?
+
+
+--------------Trigger-----------------------------------------------------------------------------------
+public class oppLineController{
+    public static void opporLine(List<OpportunityLineItem> Items)
+    {
+        Set<String> oppIds=new Set<String>();
+        Map<Id,set<String>> oppMapVal=new Map<Id,Set<String>>();
+        List<opportunity> opps=new List<opportunity>();
+        for(OpportunityLineItem p:Items)
+        {
+            if(string.isNotBlank(p.OpportunityId))
+                oppIds.add(p.OpportunityId);
+            
+        }
+        if(oppIds.size()>0){
+            list<opportunity> opps1 = [SELECT id,name,Remaining_Count__c,(Select Id,Product2Id,OpportunityId FROM OpportunityLineItems) from opportunity WHERE id IN : oppIds];
+            for(opportunity p: opps1){
+                Set<String> ProductIds=new set<String>();
+                for(OpportunityLineItem opl:p.OpportunityLineItems)
+                {
+                    ProductIds.add(opl.Product2Id);  
+                }
+                oppMapVal.put(p.Id,ProductIds);
+            }
+            integer countofProduct=[Select count() from Product2];
+            for(opportunity p:opps1)
+            {
+                p.Remaining_Count__c=countofProduct - oppMapVal.get(p.Id).size();
+                system.debug('p.Remaining_Count__c:'+ p.Remaining_Count__c);
+                opps.add(p);
+            }
+        }
+        if(opps.size()>0)
+        {
+            update opps;
+            system.debug('opps:'+opps);
+        }
+    }
+}
+
+-----------------------------------------Apex Trigger-------------------------------------
+
+trigger OpportunityLineItemsTrigger on OpportunityLineItem (after insert, after delete) {
+    
+    if(Trigger.isAfter&&trigger.isInsert)
+    {
+        oppLineController.opporLine(trigger.new);
+    }
+    if(Trigger.isAfter&&trigger.isDelete)
+    {
+        oppLineController.opporLine(trigger.old);
+    }
+}
+
+--------------------Apex Test ------------------------------------------------------------
+@isTest
+public class oppLineControllerTest { 
+    @isTest
+    static void opporLineTest(){
+        Opportunity opp = new Opportunity();
+        opp.Name='Test Opp Remain Count';
+        opp.StageName='Prospecting';
+        opp.CloseDate=system.today();
+        insert opp;
+        
+        OpportunityLineItem oppLineItem = new OpportunityLineItem();
+        oppLineItem.OpportunityId=opp.Id;
+        oppLineItem.PricebookEntryId='01u5g0000032NecAAE';
+        oppLineItem.UnitPrice=20;
+        oppLineItem.Quantity=5;
+        insert oppLineItem;
+        
+        OpportunityLineItem oppLineItem2 = new OpportunityLineItem();
+        oppLineItem2.OpportunityId=opp.Id;
+        oppLineItem2.PricebookEntryId='01u5g0000032NeZAAU';
+        oppLineItem2.UnitPrice=50;
+        oppLineItem2.Quantity=22;
+        insert oppLineItem2;
+        
+        Delete oppLineItem2;
+        
+        Opportunity op=[Select Id,Remaining_Count__c from Opportunity where Id=:opp.Id];
+        system.assertNotEquals(2,op.Remaining_Count__c);
+        
+        
+    }
+}
+
+
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+3.Create ToDo list using 4 input fields?
+
+-------------------------------LWC Task----------------------------------------------
+HTML
+----------------
+
+
+<template> 
+
+    <lightning-card> 
+
+        <div class="slds-p-around_x-small"> 
+
+    <lightning-input type="text" name="userName" placeholder="Enter Your Name" label="Name" onchange={handleInput}></lightning-input> 
+
+    <lightning-input type="text" name="fatherName" placeholder="Enter Your Father Name"  label="Father Name" onchange={handleInput}></lightning-input> 
+
+    <lightning-input type="date" name="DOB" placeholder="Enter Date of Birth"  label="Date of Birth" onchange={handleInput}></lightning-input> 
+
+    <lightning-input type="date" name="DOJ" placeholder="Enter Date of Joining"  label="Date of Joining" onchange={handleInput}></lightning-input> 
+
+     
+
+    <lightning-button label="Save" variant="brand" onclick={handleSave} class="slds-m-left_x-small"></lightning-button> 
+
+    <lightning-button label="Clear" variant="brand" onclick={handleCancel} class="slds-m-left_x-small"></lightning-button> 
+
+    <table class="slds-table slds-table_cell-buffer slds-table_bordered"> 
+
+        <thead> 
+
+            <tr> 
+
+                <th>Name</th> 
+
+                <th>Father Name</th> 
+
+                <th>Date of Birth</th> 
+
+                <th>Date of Joining</th> 
+
+            </tr> 
+
+        </thead> 
+
+        <tbody> 
+
+             
+
+            <template for:each={userDetaisList} for:item="details"> 
+
+                <tr key={details.Id}> 
+
+                    <td>{details.userName}</td> 
+
+                    <td>{details.fatherName}</td> 
+
+                    <td>{details.DOB}</td> 
+
+                    <td>{details.DOJ}</td> 
+
+                     
+
+                </tr> 
+
+            </template> 
+
+        </tbody> 
+
+        </table> 
+
+        </div> 
+
+</lightning-card> 
+
+ 
+
+</template> 
+
+ 
+
+
+------------------------JS-----------------------------------------
+
+ 
+
+import { LightningElement } from 'lwc'; 
+
+ 
+
+export default class To_Do_List extends LightningElement { 
+
+    Id; 
+
+    index=0; 
+
+   userDetail={} 
+
+   userDetaisList=[] 
+
+   handleInput(event) 
+
+   { 
+
+
+    const {name,value}=event.target 
+
+this.userDetail={}
+
+    this.userDetail={...this.userDetail,Id:this.index,[name]:value} 
+   {"name":"ammu",fathername":"dady"}
+{  {"name":"ammu",fathername":"dady","DOB":"98709}"}
+
+ 
+
+   } 
+
+   handleSave() 
+
+    { 
+
+        this.index=this.index+1; 
+
+        this.userDetaisList=[...this.userDetaisList,this.userDetail]; 
+]
+
+    } 
+
+    handleCancel(event){ 
+
+        this.template.querySelectorAll('lightning-input').forEach(element => { 
+
+            console.log(element.value) 
+
+          element.value = null; 
+
+        }); 
+
+      } 
+} 
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+4.whenever user search any movie then we have to display related to that movie  in UI  using LWC   (for movie data you can use 3rd party OMDB API Key)
+
+
+-----------------------------------------Integration with LWC----------------------------------------------
+
+
+--------------------Apex Class---------------------------
+
+public class  OMDBController{
+    //OMDB Means open movie database
+    private static final string OMBD_API='http://www.omdbapi.com/?apikey=9c3cf537&s=';
+    @AuraEnabled
+    public static string getMovies(string title)
+    {
+        string endpoint=OMBD_API+title;
+      Http h=new Http();
+      HttpRequest req=new HttpRequest();
+        req.setMethod('GET');
+        req.setEndpoint(endpoint);
+        HttpResponse res=h.send(req);
+        if(res.getStatusCode()==200)
+        {
+            return res.getBody();
+        }
+       return '';
+    }
+
+}
+
+-----------------------------------HTML---------------------------------------------------
+
+<template>
+    <lightning-card>
+    <lightning-layout multiple-rows vertical-align="center">
+        <lightning-layout-item size="8" padding="around-small" vertical-align="center">
+    <lightning-input placeholder="Search Movie by Title" type="search" onchange={handleInput}></lightning-input>
+    </lightning-layout-item>
+    <lightning-layout-item size="4" padding="around-small" vertical-align="center" >
+    <lightning-button label="Search" variant="brand" onclick={fetchMovie} class="slds-var-m-top_large"></lightning-button> 
+        
+        </lightning-layout-item>
+          </lightning-layout>
+          <template if:true={movieList} >
+            <div class="slds-grid slds-wrap">
+          <template for:each={movieList} for:item="m">
+            <div class="slds-col slds-size_1-of-3 " key={m.imdbID}>
+                <lightning-layout class="border">
+                    <lightning-layout-item size="8" padding="around-small"  >
+                        <p>
+                            <strong>Title : </strong> {m.Title} <br />
+                            <strong>Type : </strong> {m.Type} <br />
+                            <strong>Year : </strong> {m.Year} <br />
+                            <strong>imdbID : </strong> {m.imdbID} <br />
+                        </p>
+                        </lightning-layout-item>
+                        <lightning-layout-item size="4" padding="around-small">
+                            <p> <img src={m.Poster} width="120" height="140"/></p>                                
+                                </lightning-layout-item>
+                        </lightning-layout>
+                   
+                </div>
+                </template>
+                </div>
+                </template>
+                <template if:false={showMessage}>
+                    <template if:false={movieList}>
+                        <lightning-layout vertical-align="center">
+                            <lightning-layout-item  padding="around-small" vertical-align="center">
+                        <p><strong>There is no movie matching your search current movie</strong></p>
+                        </lightning-layout-item>
+                        </lightning-layout>
+                    </template>
+                </template>
+              
+            
+</lightning-card>
+</template>
+
+-------------------------------------------JS------------------------------------------------
+
+
+import { LightningElement } from 'lwc';
+import getMovies from '@salesforce/apex/OMDBController.getMovies'
+export default class MovieSearch extends LightningElement {
+    title
+    movieList
+    showMessage=true
+    handleInput(event)
+    {
+        this.title=event.target.value
+    }
+    fetchMovie()
+    {
+        this.showMessage=false
+        getMovies({title:this.title}).then(data=>{
+           this.movieList=JSON.parse(data).Search?JSON.parse(data).Search:'';
+        
+        }).catch(error=>{
+            console.log(error)
+        })
+    }
+}
